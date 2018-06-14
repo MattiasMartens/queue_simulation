@@ -27,7 +27,7 @@
                 <div class="workstation_black-box">
                     {{(isEntrypoint && "Entrypoint") || (isEndpoint && "Endpoint") || "Workstation"}}
                 </div>
-                <div class="workstation_queue" v-if="!isEndpoint">
+                <div class="workstation_queue" v-if="!isEndpoint && !isEntrypoint">
                     <div v-for="i in queueSize" class="workstation_queue-item">
                     </div>
                 </div>
@@ -44,20 +44,27 @@
             `
         };
         
-        const workstationTemplate = {
+        const nodeTemplate = {
             nodeType: "WORKSTATION",
-            queueSize: 0
+            queueSize: 0,
+            queueCapacity: 5,
+            efficiency: 1.00
         };
 
-        const newWorkstation = obj => Object.assign({}, workstationTemplate, obj);
+        const availableQueueSpace = node => 
+            node.nodeType === "ENDPOINT" ? Number.MAX_SAFE_INTEGER
+                : node.queueCapacity - node.queueSize;
 
-        new Vue({
-            el: '#app',
+        const newWorkstation = obj => Object.assign({}, nodeTemplate, obj);
+
+        const randomCompletionThreshold = (efficiency) => 1 / (1 + (efficiency * ((1 / 0.98) - 1)))
+
+        const experiment = {
             data() {
                 return {
                     nodes: [
                         { nodeType: "ENTRYPOINT" },
-                        ...new Array(4).fill({}),
+                        ...new Array(4).fill().map(_ => ({ efficiency: Math.random() * 2 })),
                         { nodeType: "ENDPOINT" }
                     ].map(newWorkstation)
                 }
@@ -68,6 +75,15 @@
                 },
                 workstations() {
                     return this.nodes.filter(w => w.nodeType === "WORKSTATION");
+                },
+                randomCompletionThresholds() {
+                    const weakMap = new WeakMap();
+
+                    this.nodes.forEach(n => {
+                        weakMap.set(n, randomCompletionThreshold(n.efficiency));
+                    });
+
+                    return weakMap;
                 }
             },
             methods: {
@@ -78,7 +94,7 @@
                         }
                         
                         this.workstations.forEach((n) => {
-                            if (Math.random() > 0.98) {
+                            if (Math.random() > this.randomCompletionThresholds.get(n)) {
                                 this.handoffTask(n, this.nodes[this.nodes.indexOf(n) + 1]);
                             }
                         });
@@ -94,22 +110,23 @@
                     this.entrypoints.forEach(e => e.queueSize++);
                 },
                 handoffTask(nodeA, nodeB) {
-                    if (nodeA.queueSize > 0) {
+                    if (nodeA.queueSize > 0 && availableQueueSpace(nodeB)) {
                         nodeA.queueSize--;
                         nodeB.queueSize++;
                     }
                 },
                 handoffAllTasks(node) {
                     const downstreamNode = this.nodes[this.nodes.indexOf(node) + 1];
-                    downstreamNode.queueSize += node.queueSize;
-                    node.queueSize = 0;
+                    const toTransfer = Math.min(node.queueSize, availableQueueSpace(downstreamNode));
+                    downstreamNode.queueSize += toTransfer;
+                    node.queueSize -= toTransfer;
                 }
             },
             created() {
                 this.simulationLoop();
             },
             template: `
-                <div class="app">
+                <div class="experiment">
                     <template v-for="node, index in nodes">
                         <node v-bind="node" />
                         <connector v-if="index < nodes.length - 1" />
@@ -121,20 +138,31 @@
                 endpoint,
                 connector
             }
+        }
+        
+        window.vue = new Vue({
+            el: "#app",
+            data: () => ({
+                experiments: [{}, {}, {}, {}]
+            }),
+            template: `
+                <div class="app">
+                    <experiment v-for="experiment in experiments" v-bind="experiment" />
+                </div>
+            `,
+            components: {
+                experiment
+            }
         });
     </script>
     <style>
-        body {
-            display: flex;
-            justify-content: center;
-        }
-
-        .app {
+        .experiment {
             margin: auto;
             display: flex;
             flex-direction: row;
             justify-content: center;
             align-self: center;
+            min-height: 20rem;
         }
 
         .node, .endpoint {

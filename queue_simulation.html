@@ -1,0 +1,187 @@
+<html>
+    <head>
+        <script src="https://cdn.jsdelivr.net/npm/vue@2.5.16/dist/vue.js"></script>
+    </head>
+    <body>
+        <div id="app"></div>
+    </body>
+    <script>
+        const connector = {
+            template: `
+                <div class="connector"></div>
+            `
+        }
+
+        const node = {
+            props: ["nodeType", "queueSize"],
+            computed: {
+                isEntrypoint() {
+                    return this.nodeType === "ENTRYPOINT";
+                },
+                isEndpoint() {
+                    return this.nodeType === "ENDPOINT";
+                }
+            },
+            template: `
+              <div class="node">
+                <div class="workstation_black-box">
+                    {{(isEntrypoint && "Entrypoint") || (isEndpoint && "Endpoint") || "Workstation"}}
+                </div>
+                <div class="workstation_queue" v-if="!isEndpoint">
+                    <div v-for="i in queueSize" class="workstation_queue-item">
+                    </div>
+                </div>
+                <div class="workstation_endpoint-status" v-else>
+                    {{queueSize}}
+                </div>
+              </div>
+            `
+        };
+
+        const endpoint = {
+            template: `
+                <div class="endpoint">Endpoint</div>
+            `
+        };
+        
+        const workstationTemplate = {
+            nodeType: "WORKSTATION",
+            queueSize: 0
+        };
+
+        const newWorkstation = obj => Object.assign({}, workstationTemplate, obj);
+
+        new Vue({
+            el: '#app',
+            data() {
+                return {
+                    nodes: [
+                        { nodeType: "ENTRYPOINT" },
+                        ...new Array(4).fill({}),
+                        { nodeType: "ENDPOINT" }
+                    ].map(newWorkstation)
+                }
+            },
+            computed: {
+                entrypoints() {
+                    return this.nodes.filter(w => w.nodeType === "ENTRYPOINT");
+                },
+                workstations() {
+                    return this.nodes.filter(w => w.nodeType === "WORKSTATION");
+                }
+            },
+            methods: {
+                simulationLoop() {
+                    setTimeout(() => {
+                        if (Math.random() > 0.98) {
+                            this.generateTask();
+                        }
+                        
+                        this.workstations.forEach((n) => {
+                            if (Math.random() > 0.98) {
+                                this.handoffTask(n, this.nodes[this.nodes.indexOf(n) + 1]);
+                            }
+                        });
+
+                        this.entrypoints.forEach((e) => {
+                            this.handoffAllTasks(e);
+                        });
+
+                        this.simulationLoop();
+                    }, 10)
+                },
+                generateTask() {
+                    this.entrypoints.forEach(e => e.queueSize++);
+                },
+                handoffTask(nodeA, nodeB) {
+                    if (nodeA.queueSize > 0) {
+                        nodeA.queueSize--;
+                        nodeB.queueSize++;
+                    }
+                },
+                handoffAllTasks(node) {
+                    const downstreamNode = this.nodes[this.nodes.indexOf(node) + 1];
+                    downstreamNode.queueSize += node.queueSize;
+                    node.queueSize = 0;
+                }
+            },
+            created() {
+                this.simulationLoop();
+            },
+            template: `
+                <div class="app">
+                    <template v-for="node, index in nodes">
+                        <node v-bind="node" />
+                        <connector v-if="index < nodes.length - 1" />
+                    </template>
+                </div>
+            `,
+            components: {
+                node,
+                endpoint,
+                connector
+            }
+        });
+    </script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+        }
+
+        .app {
+            margin: auto;
+            display: flex;
+            flex-direction: row;
+            justify-content: center;
+            align-self: center;
+        }
+
+        .node, .endpoint {
+            align-self: flex-start;
+        }
+
+        .workstation_black-box, .endpoint {
+            padding: 2rem;
+            line-height: 2rem;
+            box-sizing:border-box;
+            border: solid 1px black;
+            border-radius: 3px;
+        }
+
+        .connector {
+            width: 8rem;
+            float: left;
+            height: 1px;
+            background-color: black;
+            position: relative;
+            top: 3rem;
+        }
+
+        .connector:after {
+            content: "";
+            position:absolute;
+            right: 0;
+            top: -0.5rem;
+            border-top: 0.5rem solid transparent;
+            border-bottom: 0.5rem solid transparent;
+            border-left: 0.5rem solid black;
+        }
+        
+        .workstation_queue {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .workstation_queue-item {
+            width: 100%;
+            height: 1rem;
+            background: green;
+            border: 1px solid white;
+        }
+
+        .workstation_endpoint-status {
+            text-align: center;
+        }
+    </style>
+</html>
